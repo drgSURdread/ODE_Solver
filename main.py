@@ -1,75 +1,22 @@
-# %%
 from solver import Solver
-# %%
-# Протестируем функционал класса на простом ДУ
-# %%
-def equations(y, t):
-    dydt = y[1]
-    dzdt = -0.1 * y[1] - 3 * y[0]
-    return [dydt, dzdt]
-# %%
-nu = (0.1, 0.0) # Начальные условия
-end_time = 10.0 # Время конца решения
+from plotter import Plotter
 
-sol = Solver(equations) # Объект решателя
-# %%
-sol.solve(
-    nu, 
-    end_time=end_time,
-    step=0.1
-)
-# %%
-# Значение функции
-sol.plot_solution(
-    func_numb=0,
-    labels_name=("Время, c", "Значение функции")
-)
-# %%
-# Значение производной
-sol.plot_solution(
-    func_numb=1,
-    labels_name=("Время, c", "Значение функции")
-)
+# ОДУ, которое необходимо решить
+def equations(y: list, t: float) -> list:
+	dydt = y[1]
+	d2ydt2 = -0.1 * y[1] - 3 * y[0]
 
-# %% 
-# Решение уравнения `equation` методом Эйлера
-# %%
-sol.eiler(
-    end_time=end_time,
-    nu=nu,
-    acc=1e-5,
-)
-# %%
-# Значение функции
-sol.plot_solution(
-    func_numb=0,
-    labels_name=("Время, c", "Значение функции")
-)
-# %%
-# Значение функции
-sol.plot_solution(
-    func_numb=1,
-    labels_name=("Время, c", "Значение функции")
-)
-# %% 
-# Решение уравнения `equation` методом Рунге-Кутты 4-го порядка
-# %%
-# %%
-sol.rk4(
-    end_time=end_time,
-    nu=nu,
-    acc=1e-5,
-)
-# %%
-# Значение функции
-sol.plot_solution(
-    func_numb=0,
-    labels_name=("Время, c", "Значение функции")
-)
-# %%
-# Значение функции
-sol.plot_solution(
-    func_numb=1,
-    labels_name=("Время, c", "Значение функции")
-)
-# %%
+	return [dydt, d2ydt2]
+
+# Исходные данные для расчета
+initial_values = (0.1, 0.0)
+integration_time = 10.0
+
+# Создание объекта решателя
+sol = Solver(equations)
+
+# Запуск решателя
+sol.eiler_solve(initial_values, integration_time, 0.001)
+
+# Визуализация решения
+Plotter.plot(sol.t_solution, sol.y_solution[0])
