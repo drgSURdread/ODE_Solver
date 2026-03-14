@@ -61,6 +61,7 @@ dependencies:
   - pip=26.0.1=pyhc872135_0
   - pixman=0.46.4=h09dc60e_0
   - pthread-stubs=0.3=h1a28f6b_1
+  - pydocstyle=6.3.0=py312hca03da5_1
   - pyparsing=3.2.5=py312hca03da5_0
   - python=3.12.12=h2bfc596_1
   - python-dateutil=2.9.0post0=py312hca03da5_2
@@ -68,6 +69,7 @@ dependencies:
   - scipy=1.17.1=py312h079a9ef_0
   - setuptools=80.10.2=py312hca03da5_0
   - six=1.17.0=py312hca03da5_0
+  - snowballstemmer=3.0.1=py312hca03da5_0
   - sqlite=3.51.2=h67002bf_0
   - tk=8.6.15=hcd8a7d5_0
   - tornado=6.5.4=py312haa24f5a_0
