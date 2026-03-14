@@ -1,4 +1,4 @@
-from solver import Solver
+from solver import ODESolver
 from plotter import Plotter
 
 
@@ -15,10 +15,9 @@ initial_values = (0.1, 0.0)
 integration_time = 10.0
 
 # Создание объекта решателя
-sol = Solver(equations)
+sol = ODESolver(equations)
 
 # Запуск решателя
-sol.eiler_solve(initial_values, integration_time, 0.001)
-
+sol.solve_fixed_step(initial_values, (0.0, integration_time), 0.001, method="rk4")
 # Визуализация решения
 Plotter.plot(sol.t_solution, sol.y_solution[0])

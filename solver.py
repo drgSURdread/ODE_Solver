@@ -1,205 +1,210 @@
 import numpy as np
 from scipy.integrate import odeint
+from typing import Callable, Optional, List, Union
+import warnings
 
 
-class Solver:
-    def __init__(self, system: object) -> object:
+class ODESolver:
+    """
+    Решатель систем обыкновенных дифференциальных уравнений
+    """
+
+    def __init__(self, system: Callable):
         """
-        Конструктор класса Solver
+        Инициализация решателя
 
         Args:
-                system (function): ссылка на функцию, представляющая систему ОДУ
-
-        Returns:
-                object: объект класса Solver
+            system: функция, представляющая систему ОДУ
+                   должна принимать (y, t) и возвращать производные
         """
         self.system = system
-        self.t_solution = []
-        self.y_solution = []
+        self.t_solution: Optional[np.ndarray] = None
+        self.y_solution: Optional[np.ndarray] = None
 
-    def solve_by_user_step(
+    def solve_scipy(
         self,
         init_values: tuple,
-        integration_time: float,
-        step_size: float,
-        t_eval: list = None,
+        t_span: tuple,
+        t_eval: Optional[np.ndarray] = None,
+        **kwargs,
     ) -> None:
         """
-        Функция решателя, получающая решение для `self.system`.
-        Указанный решатель получает решение с постоянным шагом,
-        если не переданы временные точки интегрирования в параметр
-        `t_eval`.
+        Решение с использованием scipy.integrate.odeint
 
         Args:
-                init_values (tuple): набор начальных условий
-                integration_time (float): время интегрирования
-                step_size (float): шаг решателя
-                t_eval (list, optional): пользовательские точки
-                интегрирования. Defaults to None
-
-        Returns:
-                None
+            init_values: начальные условия
+            t_span: интервал интегрирования (t_start, t_end)
+            t_eval: точки для вывода решения
+            **kwargs: дополнительные параметры для odeint
         """
+        t_start, t_end = t_span
+
         if t_eval is None:
-            self.t_solution = np.linspace(
-                0.0, integration_time, int(integration_time / step_size)
-            )
+            self.t_solution = np.linspace(t_start, t_end, 1000)
         else:
-            self.t_solution = t_eval
+            self.t_solution = np.array(t_eval)
 
-        self.y_solution = odeint(self.system, init_values, self.t_solution)
-        self.y_solution = np.transpose(self.y_solution)
+        self.y_solution = odeint(self.system, init_values, self.t_solution, **kwargs)
+        self.y_solution = self.y_solution.T
 
-    def eiler_solve(
-        self,
-        init_values: tuple,
-        integration_time: float,
-        accuracy: float,
+    def solve_fixed_step(
+        self, init_values: tuple, t_span: tuple, step_size: float, method: str = "rk4"
     ) -> None:
         """
-        Функция решателя, получающая решение для `self.system`
-        методом Эйлера.
+        Решение с фиксированным шагом
 
         Args:
-                init_values (tuple): набор начальных условий
-                integration_time (float): время интегрирования
-                accuracy (float): точность интегрирования
-
-        Returns:
-                None
+            init_values: начальные условия
+            t_span: интервал интегрирования (t_start, t_end)
+            step_size: размер шага
+            method: метод ('euler' или 'rk4')
         """
-        system_order = len(init_values)
-        step_size = accuracy**0.5
+        t_start, t_end = t_span
+        n_steps = int((t_end - t_start) / step_size) + 1
 
-        self.t_solution = [0.0]
-        self.y_solution = [[init_value] for init_value in init_values]
+        self.t_solution = np.linspace(t_start, t_end, n_steps)
+        y = np.array(init_values)
+        self.y_solution = [y]
 
-        while self.t_solution[-1] < integration_time:
-            derived_values = self.system(
-                [self.y_solution[i][-1] for i in range(system_order)],
-                self.t_solution[-1],
-            )
+        for i in range(1, n_steps):
+            t = self.t_solution[i - 1]
+            dt = self.t_solution[i] - t
 
-            next_step_values = [
-                self.y_solution[i][-1] + step_size * derived_values[i]
-                for i in range(system_order)
-            ]
-            next_2_step_values = [
-                self.y_solution[i][-1] + step_size / 2.0 * derived_values[i]
-                for i in range(system_order)
-            ]
-
-            if all(
-                abs(next_2_step_values[i] - next_step_values[i]) < accuracy
-                for i in range(system_order)
-            ):
-                self.t_solution.append(self.t_solution[-1] + step_size)
-
-                for i in range(system_order):
-                    self.y_solution[i].append(next_step_values[i])
-
-                step_size = 2.0 * step_size
+            if method.lower() == "euler":
+                y = y + dt * np.array(self.system(y, t))
+            elif method.lower() == "rk4":
+                y = self.__rk4_step(y, t, dt)
             else:
-                step_size = step_size / 2.0
+                raise ValueError(f"Неизвестный метод: {method}")
 
-        self.y_solution = np.array(self.y_solution)
+            self.y_solution.append(y)
 
-    def __get_rk_coefficients(self, step_size: float) -> tuple:
-        """
-        Функция вычисляющая коэффициенты для вычисления шага
-        в методе Рунге-Кутты 4-го порядка
+        self.y_solution = np.array(self.y_solution).T
 
-        Args:
-                step_size (float): текущий шаг интегрирования
-
-        Returns:
-                tuple: значения поправок в значениях функции и производной на следующем шаге
-        """
-        temp_function_values = self.y_solution[-1]
-
-        temp_system_values = self.system(temp_function_values, self.t_solution[-1])
-        k1 = step_size * temp_system_values[0]
-        l1 = step_size * temp_system_values[1]
-
-        temp_function_values = [
-            temp_function_values[0] + k1 / 2.0,
-            temp_function_values[1] + l1 / 2.0,
-        ]
-        temp_system_values = self.system(
-            temp_function_values, self.t_solution[-1] + step_size / 2.0
-        )
-        k2 = step_size * temp_system_values[0]
-        l2 = step_size * temp_system_values[1]
-
-        temp_function_values = [
-            temp_function_values[0] + k2 / 2.0,
-            temp_function_values[1] + l2 / 2.0,
-        ]
-        temp_system_values = self.system(
-            temp_function_values, self.t_solution[-1] + step_size / 2.0
-        )
-        k3 = step_size * temp_system_values[0]
-        l3 = step_size * temp_system_values[1]
-
-        temp_function_values = [
-            temp_function_values[0] + k3,
-            temp_function_values[1] + l3,
-        ]
-        temp_system_values = self.system(
-            temp_function_values, self.t_solution[-1] + step_size
-        )
-        k4 = step_size * temp_system_values[0]
-        l4 = step_size * temp_system_values[1]
-
-        return (k1 + 2.0 * k2 + 2.0 * k3 + k4, l1 + 2.0 * l2 + 2.0 * l3 + l4)
-
-    def rk4_solve(
+    def solve_adaptive(
         self,
         init_values: tuple,
-        integration_time: float,
+        t_span: tuple,
         accuracy: float,
+        method: str = "rk4",
+        max_step: float = 1.0,
+        min_step: float = 1e-10,
     ) -> None:
         """
-        Функция решателя, получающая решение для `self.system`
-        методом Рунге-Кутты 4-го порядка.
+        Решение с адаптивным шагом
 
         Args:
-                init_values (tuple): набор начальных условий
-                integration_time (float): время интегрирования
-                accuracy (float): точность интегрирования
+            init_values: начальные условия
+            t_span: интервал интегрирования (t_start, t_end)
+            accuracy: требуемая точность
+            method: метод ('euler' или 'rk4')
+            max_step: максимальный размер шага
+            min_step: минимальный размер шага
+        """
+        t_start, t_end = t_span
+        t_current = t_start
+        y_current = np.array(init_values)
+
+        self.t_solution = [t_current]
+        self.y_solution = [y_current]
+
+        step_size = min(accuracy ** (0.5 if method == "euler" else 0.2), max_step)
+        max_iterations = 100000
+        iteration = 0
+
+        while t_current < t_end and iteration < max_iterations:
+            if step_size < min_step:
+                warnings.warn(
+                    f"Шаг стал слишком маленьким: {step_size}. Уменьшите допустимый минимальный шаг `min_step`. Интегрирование прервано"
+                )
+                break
+
+            if t_current + step_size > t_end:
+                step_size = t_end - t_current
+
+            if method.lower() == "euler":
+                y_new, error, step_size = self.__adaptive_euler_step(
+                    y_current, t_current, step_size, accuracy
+                )
+            elif method.lower() == "rk4":
+                y_new, error, step_size = self.__adaptive_rk4_step(
+                    y_current, t_current, step_size, accuracy
+                )
+            else:
+                raise ValueError(f"Неизвестный метод: {method}")
+
+            if error < accuracy:
+                t_current += step_size
+                y_current = y_new
+
+                self.t_solution.append(t_current)
+                self.y_solution.append(y_current)
+
+                if error > 0:
+                    step_size = min(
+                        step_size * min(2.0, 0.9 * (accuracy / error) ** 0.2), max_step
+                    )
+            else:
+                pass
+
+            iteration += 1
+
+        self.t_solution = np.array(self.t_solution)
+        self.y_solution = np.array(self.y_solution).T
+
+    def __rk4_step(self, y: np.ndarray, t: float, dt: float) -> np.ndarray:
+        """Один шаг метода Рунге-Кутты 4-го порядка"""
+        k1 = np.array(self.system(y, t))
+        k2 = np.array(self.system(y + dt / 2 * k1, t + dt / 2))
+        k3 = np.array(self.system(y + dt / 2 * k2, t + dt / 2))
+        k4 = np.array(self.system(y + dt * k3, t + dt))
+
+        return y + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+
+    def __adaptive_rk4_step(
+        self, y: np.ndarray, t: float, dt: float, accuracy: float
+    ) -> tuple:
+        """
+        Адаптивный шаг метода Рунге-Кутты 4-го порядка
 
         Returns:
-                None
+            (y_new, error, new_dt)
         """
-        step_size = accuracy**0.5
 
-        self.t_solution = [0.0]
-        self.y_solution = [[init_value] for init_value in init_values]
+        y_full = self.__rk4_step(y, t, dt)
 
-        while self.t_solution[-1] < integration_time:
-            rk4_coefficients = self.__get_rk_coefficients(step_size)
-            rk4_small_step_coefficients = self.__get_rk_coefficients(step_size / 2.0)
+        y_half = self.__rk4_step(y, t, dt / 2)
+        y_half = self.__rk4_step(y_half, t + dt / 2, dt / 2)
 
-            next_step_function_value = (
-                self.y_solution[0][-1] + 1.0 / 6.0 * rk4_coefficients[0]
-            )
-            next_step_dot_function_value = (
-                self.y_solution[1][-1] + 1.0 / 6.0 * rk4_coefficients[1]
-            )
+        error = np.max(np.abs(y_half - y_full))
 
-            next_2_step_function_value = (
-                self.y_solution[0][-1] + 1.0 / 6.0 * rk4_small_step_coefficients[0]
-            )
-            next_2_step_dot_function_value = (
-                self.y_solution[1][-1] + 1.0 / 6.0 * rk4_small_step_coefficients[1]
-            )
+        if error > accuracy and error > 0:
+            dt = dt * max(0.5, 0.9 * (accuracy / error) ** 0.2)
+            return y, error, dt
 
-            if abs(next_2_step_function_value - next_step_function_value) < accuracy:
-                self.t_solution.append(self.t_solution[-1] + step_size)
-                self.y_solution[0].append(next_step_function_value)
-                self.y_solution[1].append(next_step_dot_function_value)
-                step_size = 2.0 * step_size
-            else:
-                step_size = step_size / 2.0
+        return y_full, error, dt
 
-        self.y_solution = np.array(self.y_solution)
+    def __adaptive_euler_step(
+        self, y: np.ndarray, t: float, dt: float, accuracy: float
+    ) -> tuple:
+        """
+        Адаптивный шаг метода Эйлера
+
+        Returns:
+            (y_new, error, new_dt)
+        """
+        k = np.array(self.system(y, t))
+
+        y_full = y + dt * k
+
+        y_half1 = y + dt / 2 * k
+        k_half = np.array(self.system(y_half1, t + dt / 2))
+        y_half_full = y_half1 + dt / 2 * k_half
+
+        error = np.max(np.abs(y_half_full - y_full))
+
+        if error > accuracy and error > 0:
+            dt = dt * max(0.5, 0.9 * (accuracy / error))
+            return y, error, dt
+
+        return y_full, error, dt
